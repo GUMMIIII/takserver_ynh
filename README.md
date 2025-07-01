@@ -10,25 +10,27 @@
 1. .deb-Paket auf den Server legen (z.B. nach /root/)
 2. App über YunoHost WebUI oder CLI installieren und alle Parameter angeben
 
-**Nach der Installation:**
-- Das Admin-Zertifikat findest du unter `/opt/tak/certs/files/`.  
-  Importiere es in deinen Browser (z.B. Firefox unter Einstellungen → Zertifikate).
-- WebUI aufrufen: `https://<deinedomain>/<pfad>`, z.B. `https://tak.deinedomain.tld/`
-- Mit Admin-Zertifikat einloggen
+## Zugang zur TAK WebUI als Administrator – Schritt-für-Schritt-Anleitung
 
-## LDAP/SSO mit YunoHost
+Nach der Installation des TAK Servers sind folgende Schritte notwendig, um dich sicher als Administrator an der Weboberfläche (`Marti`) anzumelden.
 
-TAK Server kann über die WebUI (Menü Verwaltung > Sicherheit > LDAP) an das interne YunoHost-LDAP angebunden werden.
+---
 
-**YunoHost-LDAP Parameter (werden am Ende der Installation angezeigt):**
-- Host: `localhost`
-- Port: `389`
-- BaseDN: `dc=yunohost,dc=org`
-- Bind-DN: `cn=admin,dc=yunohost,dc=org`
-- Passwort: (in `/etc/ldap.secret`)
+### 1. Zertifikatsdateien vom Server herunterladen
 
-Um die Werte später nochmal zu sehen:
+Du benötigst **zwei Dateien** aus dem Server-Verzeichnis `/opt/tak/certs/files/`:
+- `webadmin.p12` (dein persönliches Admin-Zertifikat)
+- `truststore-<CACommonName>.p12` (dein CA-Zertifikat, z.B. `truststore-TAK-ID-CA-01.p12`)
+
+**So lädst du die Dateien auf deinen PC:**
+
+#### A. Mit WinSCP (empfohlen für Windows):
+1. [WinSCP herunterladen](https://winscp.net/)
+2. Mit dem Server verbinden (`SFTP`, Benutzername + Passwort)
+3. Zu `/opt/tak/certs/files/` navigieren
+4. Beide Dateien (`webadmin.p12` und das passende `truststore-*.p12`) per Drag&Drop auf deinen PC kopieren
+
+#### B. Mit scp im Terminal (Linux/macOS/WSL):
 ```bash
-cat /etc/yunohost/ldap.conf | grep '^base'
-cat /etc/yunohost/ldap.conf | grep '^binddn'
-cat /etc/ldap.secret
+scp benutzername@server:/opt/tak/certs/files/webadmin.p12 .
+scp benutzername@server:/opt/tak/certs/files/truststore-TAK-ID-CA-01.p12 .
