@@ -1,0 +1,58 @@
+{
+  "id": "takserver",
+  "name": "TAK Server",
+  "packaging_format": 1,
+  "version": "1.0.0~ynh1",
+  "description": {
+    "en": "Tactical Assault Kit Server for YunoHost, fully automated setup including PKI, CoreConfig, and Reverse Proxy.",
+    "de": "TAK Server als YunoHost App – vollautomatische Installation inkl. PKI, CoreConfig und Reverse Proxy."
+  },
+  "url": "https://takserver.com",
+  "license": "AGPL-3.0",
+  "maintainers": [
+  {
+    "name": "GUMIIII",
+    "email": "admin@concealed.icu"
+  }
+],
+  "requirements": {
+    "yunohost": ">= 11.0.0"
+  },
+  "arguments": {
+    "install": [
+      {
+        "name": "domain",
+        "type": "domain",
+        "ask": { "de": "Domain für TAK Server?", "en": "Domain for TAK Server?" }
+      },
+      {
+        "name": "path",
+        "type": "path",
+        "ask": { "de": "Pfad (z.B. /)?", "en": "Path (e.g. /)?" },
+        "default": "/"
+      },
+      {
+        "name": "deb_path",
+        "type": "string",
+        "ask": { "de": "Pfad zur .deb Datei?", "en": "Path to .deb file?" },
+        "example": "/root/takserver_xxx.deb"
+      },
+      {
+        "name": "ca_name",
+        "type": "string",
+        "ask": { "de": "CA-Name für PKI?", "en": "CA name for PKI?" },
+        "default": "TAK-ROOT-CA-01"
+      },
+      {
+        "name": "org",
+        "type": "string",
+        "ask": { "de": "Organisation?", "en": "Organization?" },
+        "default": "TAK"
+      }
+    ]
+  },
+  "multi_instance": false,
+  "services": [
+    "takserver"
+  ]
+}

@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -e
+
+source _common.sh
+source /usr/share/yunohost/helpers
+
+# 1. .deb vom Upload oder Download
+ynh_script_progression "Obtaining updated TAK Server .deb package..."
+if [ -n "$YNH_APP_ARG_DEB_FILE" ]; then
+  deb_path="$YNH_APP_ARG_DEB_FILE"
+else
+  ynh_download --url="$upstream_url" --output="/tmp/${app}.deb"
+  deb_path="/tmp/${app}.deb"
+fi
+
+# 2. Paket installieren
+ynh_script_progression "Installing update..."
+ynh_apt install "$deb_path" -y || ynh_die "Upgrade failed"
+
+# 3. Service neu starten
+ynh_script_progression "Restarting service..."
+ynh_systemd_action restart "$service_name"
+
+ynh_script_progression "TAK Server upgrade completed"
+root@concealed:~/takserver_ynh# cat scripts/_common.sh
+#!/usr/bin/env bash
+# Gemeinsame Variablen und Defaults
+
+app="takserver"
+version="5.0-RELEASE29"
+upstream_url="https://tak.gov/download/takserver_${version}_all.deb"
+service_name="takserver"
+tak_user="tak"
+tak_home="/opt/${app}"
+certs_dir="${tak_home}/certs/files"
