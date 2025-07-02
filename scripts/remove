@@ -1,0 +1,11 @@
+#!/bin/bash
+set -e
+
+systemctl stop takserver || true
+systemctl disable takserver || true
+apt-get remove --purge takserver -y || true
+
+rm -rf /opt/tak
+rm -f /etc/nginx/conf.d/${YNH_APP_ARG_DOMAIN}.d/takserver.conf
+
+systemctl reload nginx
