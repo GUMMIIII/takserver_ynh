@@ -1,0 +1,120 @@
+#!/bin/bash
+
+set -e
+
+# YunoHost helper laden
+source /usr/share/yunohost/helpers
+
+# Variablen aus YunoHost App-Argumenten
+domain=${YNH_APP_ARG_DOMAIN}
+deb_path=${YNH_APP_ARG_DEB_PATH}
+ca_name=${YNH_APP_ARG_CA_NAME}
+signing_ca_name=${YNH_APP_ARG_SIGNING_CA_NAME}
+org=${YNH_APP_ARG_ORG}
+state=${YNH_APP_ARG_STATE}
+city=${YNH_APP_ARG_CITY}
+orgunit=${YNH_APP_ARG_ORGANIZATIONAL_UNIT}
+install_dir="/opt/tak"
+
+# Zufällig generierte DB-Daten
+db_user="tak_$(tr -dc a-z0-9 </dev/urandom | head -c 6)"
+db_pass="$(tr -dc A-Za-z0-9 </dev/urandom | head -c 24)"
+db_name="takserver"
+
+ynh_print_info "Installiere Abhängigkeiten (Java, PostgreSQL, LDAP tools, etc.)..."
+apt-get update
+apt-get install -y openjdk-17-jre postgresql postgresql-client ldap-utils
+
+ynh_print_info "Setze Datei-Limits für Java..."
+grep -q 32768 /etc/security/limits.conf || echo '* soft nofile 32768' >> /etc/security/limits.conf
+
+ynh_print_info "Installiere TAK Server .deb..."
+dpkg -i "$deb_path"
+
+# Zugriffsrechte sicherstellen
+chown -R tak:tak /opt/tak/certs/
+chmod -R u+rwX /opt/tak/certs/
+
+# PKI Umgebung initialisieren
+ynh_print_info "Initialisiere PKI Umgebung und Zertifikate..."
+su - tak -c "
+  export STATE='$state'
+  export CITY='$city'
+  export ORGANIZATIONAL_UNIT='$orgunit'
+  export ORGANIZATION='$org'
+  export CAPASS='atakatak'
+  export PASS='atakatak'
+  cd /opt/tak/certs
+  sed -i 's/^ORGANIZATION=.*/ORGANIZATION=\"$org\"/' cert-metadata.sh
+  ./makeRootCa.sh --ca-name \"$ca_name\"
+  ./makeCert.sh ca \"$signing_ca_name\"
+  ./makeCert.sh server takserver
+"
+
+# --- DB-Infos speichern für spätere Nutzung oder Infofenster ---
+mkdir -p /opt/tak
+echo "TAK_DB_USER='$db_user'" > /opt/tak/.dbinfo
+echo "TAK_DB_NAME='$db_name'" >> /opt/tak/.dbinfo
+echo "TAK_DB_PASS='$db_pass'" >> /opt/tak/.dbinfo
+chmod 600 /opt/tak/.dbinfo
+chown tak:tak /opt/tak/.dbinfo
+
+# --- PostgreSQL Setup ---
+ynh_print_info "Erzeuge zufälligen Datenbank-Benutzer und Passwort, setze DB auf..."
+sudo -u postgres psql <<EOF
+CREATE USER $db_user WITH PASSWORD '$db_pass';
+CREATE DATABASE $db_name OWNER $db_user;
+GRANT ALL PRIVILEGES ON DATABASE $db_name TO $db_user;
+EOF
+
+# --- TAK Server Konfiguration anpassen (CoreConfig) ---
+ynh_print_info "Passe CoreConfig für Datenbankzugang an..."
+coreconfig_file="/opt/tak/CoreConfig.xml"
+if [ ! -f "$coreconfig_file" ] && [ -f "/opt/tak/CoreConfig.example.xml" ]; then
+    cp /opt/tak/CoreConfig.example.xml "$coreconfig_file"
+fi
+
+sed -i "s|<property name=\"db.url\">.*</property>|<property name=\"db.url\">jdbc:postgresql://localhost:5432/$db_name</property>|" "$coreconfig_file"
+sed -i "s|<property name=\"db.username\">.*</property>|<property name=\"db.username\">$db_user</property>|" "$coreconfig_file"
+sed -i "s|<property name=\"db.password\">.*</property>|<property name=\"db.password\">$db_pass</property>|" "$coreconfig_file"
+
+# CA-Signing (optional, wenn benötigt)
+sed -i "s/truststore-root/truststore-${signing_ca_name}/g" "$coreconfig_file"
+
+# --- Nginx Reverse Proxy ---
+ynh_print_info "Richte Nginx Reverse Proxy ein..."
+nginx_conf="/etc/nginx/conf.d/${domain}.conf"
+
+# NGINX location-Block für Root (/) anlegen
+mkdir -p "/etc/nginx/conf.d/${domain}.d"
+cat > "/etc/nginx/conf.d/${domain}.d/takserver.conf" <<EOL
+location / {
+    proxy_pass https://localhost:8443/;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_ssl_verify off;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade \$http_upgrade;
+    proxy_set_header Connection "upgrade";
+}
+EOL
+
+# Automatisches Include-Patching (nur einmal einfügen)
+tak_include="include /etc/nginx/conf.d/${domain}.d/*.conf;"
+if ! grep -qF "$tak_include" "$nginx_conf"; then
+    awk -v inc="$tak_include" '
+        /server_name/ { print; getline; print; print inc; next }
+        { print }
+    ' "$nginx_conf" > "${nginx_conf}.patched" && mv "${nginx_conf}.patched" "$nginx_conf"
+fi
+
+nginx -t && systemctl reload nginx
+
+# --- TAK-Server-Service aktivieren und starten ---
+ynh_print_info "Aktiviere und starte TAK Service..."
+systemctl enable takserver.service
+systemctl restart takserver.service
+
+ynh_print_info "TAK Server erfolgreich installiert! WebUI: https://${domain}/"

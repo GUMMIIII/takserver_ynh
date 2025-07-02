@@ -1,0 +1,47 @@
+#!/bin/bash
+set -e
+
+# -------- YunoHost Helper für saubere Ausgaben --------
+source /usr/share/yunohost/helpers
+
+ynh_print_info "Stoppe TAK-Server-Service (falls läuft)..."
+systemctl stop takserver || true
+systemctl disable takserver || true
+
+# -------- DB-Infos aus Install einlesen (Fallback auf Defaults) --------
+DBINFO_FILE="/opt/tak/.dbinfo"
+if [ -f "$DBINFO_FILE" ]; then
+    source "$DBINFO_FILE"
+else
+    TAK_DB_USER="tak_db_user"
+    TAK_DB_NAME="tak_db"
+fi
+
+ynh_print_info "Entferne TAK-Datenbank und User (PostgreSQL)..."
+sudo -u postgres psql <<EOF
+DROP DATABASE IF EXISTS $TAK_DB_NAME;
+DROP USER IF EXISTS $TAK_DB_USER;
+EOF
+
+# -------- Lösche TAK-Dateien --------
+ynh_print_info "Lösche TAK-Verzeichnis..."
+rm -rf /opt/tak
+
+# -------- Nginx-Konfig entfernen --------
+ynh_print_info "Entferne Nginx-Takserver-Config..."
+rm -f /etc/nginx/conf.d/${YNH_APP_ARG_DOMAIN}.d/takserver.conf
+
+# -------- Systembenutzer tak entfernen --------
+ynh_print_info "Entferne Systembenutzer 'tak' (falls vorhanden)..."
+if id "tak" &>/dev/null; then
+    userdel -r tak || true
+fi
+
+# -------- Nginx reloaden --------
+ynh_print_info "Lade Nginx neu..."
+systemctl reload nginx || true
+
+# -------- Hinweis, falls du SSO-Berechtigung hast --------
+yunohost app ssowatconf
+
+ynh_print_info "TAK-Server wurde vollständig entfernt."
