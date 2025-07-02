@@ -1,0 +1,101 @@
+#!/bin/bash
+
+set -e
+
+source /usr/share/yunohost/helpers
+
+# Argumente auslesen (alle klein!)
+domain=$YNH_APP_ARG_DOMAIN
+path=$YNH_APP_ARG_PATH
+deb_path=$YNH_APP_ARG_DEB_PATH
+ca_name=$YNH_APP_ARG_CA_NAME
+signing_ca_name=$YNH_APP_ARG_SIGNING_CA_NAME
+org=$YNH_APP_ARG_ORG
+state=$YNH_APP_ARG_STATE
+city=$YNH_APP_ARG_CITY
+orgunit=$YNH_APP_ARG_ORGANIZATIONAL_UNIT
+
+install_dir="/opt/tak"
+
+# 1. Systemvoraussetzungen
+ynh_script_progression --message="Installiere Abhängigkeiten (Java, PostgreSQL, LDAP tools, etc.)..."
+apt-get update
+apt-get install -y openjdk-17-jre postgresql postgresql-client ldap-utils
+
+# 2. Limits setzen
+ynh_script_progression --message="Setze Datei-Limits für Java..."
+grep -q "32768" /etc/security/limits.conf || \
+echo -e "*\tsoft\tnofile\t32768\n*\thard\tnofile\t32768" >> /etc/security/limits.conf
+
+# 3. .deb installieren
+ynh_script_progression --message="Installiere TAK Server .deb..."
+dpkg -i "$deb_path" || apt-get install -f -y
+
+# Fix Permissions für PKI-Skripte/Dateien
+chown -R tak:tak /opt/tak/certs/
+chmod -R u+rwX /opt/tak/certs/
+
+# 4. PKI initialisieren – notwendige Variablen setzen
+ynh_script_progression --message="Initialisiere PKI Umgebung und Zertifikate..."
+
+export STATE="$state"
+export CITY="$city"
+export ORGANIZATIONAL_UNIT="$orgunit"
+export ORGANIZATION="$org"
+export CAPASS="atakatak"
+export PASS="atakatak"
+
+su - tak -c "
+  cd /opt/tak/certs && \
+  sed -i 's/^ORGANIZATION=.*/ORGANIZATION=\"$org\"/' cert-metadata.sh && \
+  ./makeRootCa.sh --ca-name \"$ca_name\" && \
+  ./makeCert.sh ca \"$signing_ca_name\" && \
+  ./makeCert.sh server takserver
+"
+
+# 5. CoreConfig anpassen
+ynh_script_progression --message="Passe CoreConfig an..."
+CA_SIGNING_NAME=$signing_ca_name
+su - tak -c "cd /opt/tak && sed -i 's/truststore-root/truststore-'"$CA_SIGNING_NAME"'/g' CoreConfig.example.xml"
+
+# 6. Konfig übernehmen
+[ -f /opt/tak/CoreConfig.example.xml ] && \
+cp /opt/tak/CoreConfig.example.xml /opt/tak/CoreConfig.xml
+
+# 7. TAK Service aktivieren/starten
+ynh_script_progression --message="Aktiviere und starte TAK Service..."
+systemctl enable takserver.service
+systemctl start takserver.service
+
+# 8. Nginx Reverse Proxy anlegen
+ynh_script_progression --message="Richte Nginx Reverse Proxy ein..."
+nginx_conf="/etc/nginx/conf.d/$domain.d/takserver.conf"
+cat > "$nginx_conf" <<EOF
+location $path {
+    proxy_pass https://localhost:8443/;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_ssl_verify off;
+}
+EOF
+systemctl reload nginx
+
+# 9. LDAP-Parameter für die WebUI-Integration bereitstellen
+ldap_host="localhost"
+ldap_port="389"
+ldap_base_dn="$(cat /etc/yunohost/ldap.conf 2>/dev/null | grep '^base' | awk '{print $2}')"
+ldap_bind_dn="$(cat /etc/yunohost/ldap.conf 2>/dev/null | grep '^binddn' | awk '{print $2}')"
+ldap_bind_pw="$(cat /etc/ldap.secret 2>/dev/null)"
+
+echo "=============================================================="
+echo "YunoHost-LDAP Konfig für TAK WebUI:"
+echo "LDAP-Host: $ldap_host"
+echo "LDAP-Port: $ldap_port"
+echo "BaseDN:    $ldap_base_dn"
+echo "Bind-DN:   $ldap_bind_dn"
+echo "Passwort:  $ldap_bind_pw"
+echo "=============================================================="
+
+ynh_script_progression --message="TAK Server erfolgreich installiert! WebUI: https://$domain$path"
