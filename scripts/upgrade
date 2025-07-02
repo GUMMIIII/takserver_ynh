@@ -1,0 +1,24 @@
+#!/bin/bash
+
+set -e
+
+source /usr/share/yunohost/helpers
+
+# Neue .deb als Argument (über YunoHost-UI angeben)
+deb_path=$YNH_APP_ARG_DEB_PATH
+
+backup_dir="/opt/tak-backup-before-upgrade-$(date +%Y%m%d-%H%M%S)"
+ynh_script_progression --message="Backup von /opt/tak nach $backup_dir..."
+cp -a /opt/tak "$backup_dir"
+
+ynh_script_progression --message="Installiere neue TAK-Server-Version aus $deb_path..."
+dpkg -i "$deb_path" || apt-get install -f -y
+
+# Fix Permissions für PKI-Skripte/Dateien
+chown -R tak:tak /opt/tak/certs/
+chmod -R u+rwX /opt/tak/certs/
+
+ynh_script_progression --message="Starte TAK Service neu..."
+systemctl restart takserver.service
+
+ynh_script_progression --message="Upgrade abgeschlossen! Altes /opt/tak ist als Backup unter $backup_dir gesichert."
