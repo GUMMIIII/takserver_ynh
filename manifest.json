@@ -38,10 +38,10 @@
         "name": "path",
         "type": "path",
         "ask": {
-          "en": "Choose an app path (default: /tak)",
-          "de": "Wähle einen App-Pfad (Standard: /tak)"
+          "en": "Choose an app path (default: /)",
+          "de": "Wähle einen App-Pfad (Standard: /)"
         },
-        "default": "/tak"
+        "default": "/"
       },
       {
         "name": "org",
