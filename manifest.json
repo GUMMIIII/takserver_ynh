@@ -1,0 +1,99 @@
+{
+  "id": "takserver",
+  "name": "TAK Server",
+  "packaging_format": "1.0",
+  "description": {
+    "en": "Tactical Assault Kit Server (TAK Server) packaged for YunoHost.",
+    "de": "Tactical Assault Kit Server (TAK Server) als YunoHost-App."
+  },
+  "version": "1.0.0~ynh1",
+  "url": "https://tak.gov",
+  "license": "TAK Server Software License Agreement",
+  "maintainers": [
+    {
+      "name": "GUMMIIII",
+      "url": "https://github.com/GUMMIIII"
+    }
+  ],
+  "requirements": {
+    "yunohost": ">= 12.0.0"
+  },
+  "multi_instance": false,
+  "services": [
+    "nginx",
+    "postgresql"
+  ],
+  "arguments": {
+    "install": [
+      {
+        "name": "domain",
+        "type": "domain",
+        "ask": "Domain für den TAK Server?"
+      },
+      {
+        "name": "deb_path",
+        "type": "path",
+        "ask": "Pfad zur .deb Datei des TAK Servers (z.B. /root/takserver.deb)?"
+      },
+      {
+        "name": "country",
+        "type": "string",
+        "ask": "Country-Code (z.B. DE, US, AT)?"
+      },
+      {
+        "name": "state",
+        "type": "string",
+        "ask": "Bundesland/Bundesstaat?"
+      },
+      {
+        "name": "city",
+        "type": "string",
+        "ask": "Stadt/Ort?"
+      },
+      {
+        "name": "org",
+        "type": "string",
+        "ask": "Organisation?"
+      },
+      {
+        "name": "organizational_unit",
+        "type": "string",
+        "ask": "Organisatorische Einheit (optional)?"
+      },
+      {
+        "name": "ca_name",
+        "type": "string",
+        "ask": "Name der Root-CA (z.B. TAK-ROOT-CA-01)?"
+      },
+      {
+        "name": "signing_ca_name",
+        "type": "string",
+        "ask": "Name der Signing-CA (z.B. TAK-ID-CA-01)?"
+      },
+      {
+        "name": "capass",
+        "type": "string",
+        "ask": "Passwort für CA (Root + Intermediate)",
+        "default": "atakatak"
+      },
+      {
+        "name": "certpass",
+        "type": "string",
+        "ask": "Passwort für Server/Client-Zertifikate",
+        "default": "atakatak"
+      },
+      {
+        "name": "show_tile",
+        "type": "boolean",
+        "ask": "TAK Kachel im YunoHost-Portal anzeigen?",
+        "default": true
+      },
+      {
+        "name": "admin_only",
+        "type": "boolean",
+        "ask": "Kachel nur für Admins sichtbar?",
+        "default": false
+      }
+    ]
+  }
+}
