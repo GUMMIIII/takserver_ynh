@@ -1,0 +1,120 @@
+#!/bin/bash
+set -e
+
+# YunoHost helpers
+source /usr/share/yunohost/helpers
+
+# Argumente
+domain=${YNH_APP_ARG_DOMAIN}
+deb_path=${YNH_APP_ARG_DEB_PATH}
+country=${YNH_APP_ARG_COUNTRY}
+state=${YNH_APP_ARG_STATE}
+city=${YNH_APP_ARG_CITY}
+org=${YNH_APP_ARG_ORG}
+orgunit=${YNH_APP_ARG_ORGANIZATIONAL_UNIT}
+ca_name=${YNH_APP_ARG_CA_NAME}
+signing_ca_name=${YNH_APP_ARG_SIGNING_CA_NAME}
+capass=${YNH_APP_ARG_CAPASS}
+certpass=${YNH_APP_ARG_CERTPASS}
+show_tile=${YNH_APP_ARG_SHOW_TILE}
+admin_only=${YNH_APP_ARG_ADMIN_ONLY}
+install_dir="/opt/tak"
+
+# Pakete
+ynh_print_info "Installiere Abhängigkeiten..."
+apt-get update
+apt-get install -y openjdk-17-jre postgresql postgresql-client ldap-utils unzip
+
+# User anlegen, falls nicht vorhanden
+id tak &>/dev/null || adduser --system --group --home /opt/tak tak
+
+# Datei-Limits
+grep -q 32768 /etc/security/limits.conf || echo '* soft nofile 32768' >> /etc/security/limits.conf
+
+# TAK installieren
+ynh_print_info "Installiere TAK Server .deb..."
+dpkg -i "$deb_path"
+
+# Verzeichnisrechte
+chown -R tak:tak /opt/tak/certs/
+chmod -R u+rwX /opt/tak/certs/
+
+# PKI erzeugen (RootCA, SigningCA, Servercert)
+ynh_print_info "Initialisiere PKI..."
+sudo -u tak bash <<EOF
+export COUNTRY="$country"
+export STATE="$state"
+export CITY="$city"
+export ORGANIZATIONAL_UNIT="$orgunit"
+export ORGANIZATION="$org"
+export CAPASS="$capass"
+export PASS="$certpass"
+cd /opt/tak/certs
+sed -i "s/^COUNTRY=.*/COUNTRY=\"$country\"/" cert-metadata.sh
+sed -i "s/^STATE=.*/STATE=\"$state\"/" cert-metadata.sh
+sed -i "s/^CITY=.*/CITY=\"$city\"/" cert-metadata.sh
+sed -i "s/^ORGANIZATIONAL_UNIT=.*/ORGANIZATIONAL_UNIT=\"$orgunit\"/" cert-metadata.sh
+sed -i "s/^ORGANIZATION=.*/ORGANIZATION=\"$org\"/" cert-metadata.sh
+./makeRootCa.sh --ca-name "$ca_name"
+./makeCert.sh ca "$signing_ca_name"
+./makeCert.sh server takserver
+EOF
+
+# CoreConfig anpassen
+ynh_print_info "Passe CoreConfig an (Truststore, DB bleibt wie default!)..."
+coreconfig="/opt/tak/CoreConfig.example.xml"
+[ ! -f /opt/tak/CoreConfig.xml ] && cp "$coreconfig" /opt/tak/CoreConfig.xml
+sed -i "s/truststore-root/truststore-${signing_ca_name}/g" /opt/tak/CoreConfig.xml
+
+# WebAdmin-Cert erzeugen
+ynh_print_info "Erzeuge WebAdmin-Client-Zertifikat (webadmin)..."
+sudo -u tak bash -c "cd /opt/tak/certs && ./makeCert.sh client webadmin"
+sudo -u tak bash -c "java -jar /opt/tak/utils/UserManager.jar certmod -A /opt/tak/certs/files/webadmin.pem"
+
+# Service aktivieren
+ynh_print_info "Starte TAK Service..."
+systemctl enable takserver.service
+systemctl restart takserver.service
+
+# Nginx-Proxy
+ynh_print_info "Konfiguriere Nginx Reverse Proxy..."
+nginx_conf="/etc/nginx/conf.d/${domain}.conf"
+mkdir -p "/etc/nginx/conf.d/${domain}.d"
+cat > "/etc/nginx/conf.d/${domain}.d/takserver.conf" <<EOL
+location / {
+    proxy_pass https://localhost:8443/;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_ssl_verify off;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade \$http_upgrade;
+    proxy_set_header Connection "upgrade";
+}
+EOL
+
+tak_include="include /etc/nginx/conf.d/${domain}.d/*.conf;"
+if ! grep -qF "$tak_include" "$nginx_conf"; then
+    awk -v inc="$tak_include" '
+        /server_name/ { print; getline; print; print inc; next }
+        { print }
+    ' "$nginx_conf" > "${nginx_conf}.patched" && mv "${nginx_conf}.patched" "$nginx_conf"
+fi
+
+nginx -t && systemctl reload nginx
+
+# App-Kachel (nur wenn gewünscht)
+app_url="https://${domain}/"
+if [ "$show_tile" = true ]; then
+    yunohost app setting takserver portal_url -v "$app_url"
+    if [ "$admin_only" = true ]; then
+        yunohost app setting takserver portal_show_tile -v admin
+    else
+        yunohost app setting takserver portal_show_tile -v all
+    fi
+else
+    yunohost app setting takserver portal_show_tile -v hidden
+fi
+
+ynh_print_info "TAK Server installiert! WebUI via: https://${domain}/ (Client-Zertifikat 'webadmin.p12' erforderlich)"
