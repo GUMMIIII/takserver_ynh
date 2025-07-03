@@ -1,5 +1,7 @@
 # TAK Server (YunoHost App)
 
+**Die APP befindet sich noch in der Testphase und ist noch nicht bereit für ein LIVE-Systen**
+
 **Tactical Assault Kit Server (TAK Server)** als App für YunoHost –  
 mit integrierter PKI, Reverse Proxy & Web-UI für Zertifikate.
 
@@ -10,13 +12,14 @@ mit integrierter PKI, Reverse Proxy & Web-UI für Zertifikate.
 Der TAK Server ist eine Plattform zur Echtzeit-Kollaboration (Lagekarte, Chat, Missionsplanung)  
 und kommt bei Behörden, Militär, BOS und Security-Projekten zum Einsatz.  
 Er kommuniziert über das Cursor-On-Target-Protokoll (CoT) und setzt auf starke PKI-Authentifizierung.
+**Optimal wenn ihr SOFTAIR, PAINTBALL oder ähnliches spielt, um euer Team zu koordinieren**
 
 ---
 
 ## Voraussetzungen
 
 - YunoHost v12+
-- Eigener Server/VPS (Debian 12 empfohlen)
+- Eigener Server/VPS (Debian 12 empfohlen) - Ist mit YNH gegeben
 - **TAK Server .deb**: Download via [tak.gov](https://tak.gov) (Account erforderlich)
 - Root-Zugang zum Server
 
